@@ -23,12 +23,16 @@ jobs:
       # 3. Connect Tailscale
       - name: Connect Tailscale
         uses: tailscale/github-action@v2
+        
+        # 3. Connect Tailscale
+      - name: Connect Tailscale
+        uses: tailscale/github-action@v2
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-          version: latest
+          version: 1.76.6  # <--- JANGAN 'latest', ganti ke versi angka spesifik
           hostname: gh-kvm-box
-          args: --ssh 
-
+          args: --ssh
+        
       # 4. JALANKAN DOCKER DENGAN KVM 🚀
       - name: Start Docker Container (KVM Enabled)
         run: |
