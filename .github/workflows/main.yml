@@ -1,0 +1,36 @@
+name: Test KVM Availability
+on: workflow_dispatch # Tombol manual
+
+jobs:
+  investigasi-kvm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Cek Informasi CPU
+        run: |
+          echo "=== CPU INFO ==="
+          lscpu
+          echo "----------------"
+          echo "Mencari flag virtualisasi (vmx/svm)..."
+          grep -E -c '(vmx|svm)' /proc/cpuinfo || echo "❌ Tidak ada flag virtualisasi di CPU"
+
+      - name: 2. Cek Keberadaan /dev/kvm
+        run: |
+          echo "=== CEK DEVICE ==="
+          if [ -e /dev/kvm ]; then
+            echo "✅ WOW! /dev/kvm DITEMUKAN!"
+            echo "Izin file:"
+            ls -la /dev/kvm
+          else
+            echo "❌ /dev/kvm TIDAK DITEMUKAN."
+            echo "Artinya: Kernel tidak memuat modul KVM atau fitur dimatikan host."
+          fi
+
+      - name: 3. Vonis Akhir pake kvm-ok
+        # kvm-ok adalah tool resmi ubuntu buat cek support KVM
+        run: |
+          echo "=== INSTALL CPU-CHECKER ==="
+          sudo apt-get update -q
+          sudo apt-get install -y cpu-checker
+          
+          echo "=== HASIL KVM-OK ==="
+          kvm-ok
