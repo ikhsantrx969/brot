@@ -40,17 +40,21 @@ jobs:
      # ... langkah checkout code ...
 
       
-        # 3. Connect Tailscale
-# 3. Connect Tailscale (VERSI FIX)
-      - name: Connect Tailscale
-        uses: tailscale/github-action@v2
-        env:
-          TS_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }} # Tembak lewat ENV biar pasti masuk
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-          version: 1.76.1  # <--- INI WAJIB DIGANTI JADI 1.76.1
-          hostname: gh-kvm-box
-          args: --ssh
+# 3. Install & Connect Tailscale (CARA MANUAL / HARDCORE)
+      - name: Install & Connect Tailscale Manual
+        run: |
+          # 1. Download & Install
+          curl -fsSL https://tailscale.com/install.sh | sh
+          
+          # 2. Jalanin Daemon (Service) di Background
+          # Di GHA kadang service ga auto-start, jadi kita paksa start
+          sudo tailscaled --tun=userspace-networking --socks5-server=localhost:1055 &
+          
+          # Tunggu bentar biar daemon nyala
+          sleep 5
+          
+          # 3. Login / Connect pake Key
+          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --ssh --hostname gh-kvm-box
         
       # 4. JALANKAN DOCKER DENGAN KVM 🚀
       - name: Start Docker Container (KVM Enabled)
