@@ -1,87 +1,75 @@
-name: VM TEST (Tailscale)
+name: VPS KVM Ultimate (Manual Tailscale)
 on: 
   workflow_dispatch:
 
 jobs:
-  kvm-mode-on:
+  run-vps-kvm:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # 1. PERSIAPAN KVM (Penting!)
-      - name: Siapkan Permission KVM
+      # 1. Cek Secret (Biar tenang hati)
+      - name: Cek Secret Tailscale
         run: |
-          echo "Setting permission /dev/kvm biar bisa dibaca Docker..."
+          if [ -z "${{ secrets.TAILSCALE_AUTHKEY }}" ]; then
+            echo "❌ BAHAYA: Secret TAILSCALE_AUTHKEY kosong!"
+            exit 1
+          else
+            echo "✅ AMAN: Secret ditemukan."
+          fi
+
+      # 2. Login GHCR (Biar bisa tarik image lu)
+      - name: Login ke GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # 3. Setup KVM (Permission)
+      - name: Setup Permission KVM
+        run: |
+          echo "Memperbaiki izin /dev/kvm..."
           sudo chmod 666 /dev/kvm
           ls -la /dev/kvm
 
-      # 2. Login ke GHCR (Biar bisa tarik image custom kamu)
-      - name: Login GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-    
-      - name: CEK DULU ADA ISINYA KAGAK
+      # 4. Install Tailscale MANUAL (Anti Error Version)
+      - name: Install & Connect Tailscale
         run: |
-          if [ -z "${{ secrets.TAILSCALE_AUTHKEY }}" ]; then
-            echo "❌ KOSONG BOS! Secret ga kebaca sama sekali."
-            exit 1
-          else
-            echo "✅ AMAN! Secret terdeteksi (Panjang karakter: ${#MY_SECRET})"
-          fi
-        env:
-          MY_SECRET: ${{ secrets.TAILSCALE_AUTHKEY }}
-
-      # ... baru langkah tailscale ...
-        
-      # 3. Connect Tailscale
-      - name: Connect Tailscale
-        uses: tailscale/github-action@v2
-
-     # ... langkah checkout code ...
-
-      
-# 3. Install & Connect Tailscale (CARA MANUAL / HARDCORE)
-      - name: Install & Connect Tailscale Manual
-        run: |
-          # 1. Download & Install
+          # Download Script Resmi
           curl -fsSL https://tailscale.com/install.sh | sh
           
-          # 2. Jalanin Daemon (Service) di Background
-          # Di GHA kadang service ga auto-start, jadi kita paksa start
+          # Start Service di Background (Userspace Mode biar aman di GHA)
           sudo tailscaled --tun=userspace-networking --socks5-server=localhost:1055 &
           
-          # Tunggu bentar biar daemon nyala
+          # Tunggu service bangun tidur
+          echo "Menunggu Tailscale service..."
           sleep 5
           
-          # 3. Login / Connect pake Key
+          # Connect pakai Secret
           sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --ssh --hostname gh-kvm-box
-        
-      # 4. JALANKAN DOCKER DENGAN KVM 🚀
-      - name: Start Docker Container (KVM Enabled)
+
+      # 5. Jalankan Docker Container (KVM ON)
+      - name: Start Docker Container
         run: |
-          # Konfigurasi
-          RAM=7000 # Mentok di 7GB untuk GHA
-          CPU=2
+          echo "Menjalankan Container..."
           
-          echo "Starting Container..."
-          
+          # Jalankan di background (-d)
           docker run -d \
             --name my_kvm_machine \
             --device /dev/kvm \
             --privileged \
-            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-            -e RAM=$RAM \
-            -e CPU=$CPU \
+            -e RAM=7000 \
+            -e CPU=2 \
             ghcr.io/ikhsantrx969/ubuntuos:latest \
-            /sbin/init
-            
-            # Catatan: /sbin/init dipakai kalau image kamu support systemd
-            # Kalau error, ganti baris terakhir jadi: tail -f /dev/null
+            tail -f /dev/null 
+            # 'tail -f' dipake biar container gak mati sendiri
 
-      # 5. Keep Alive (6 Jam)
-      - name: Tunggu Koneksi Termux
+      # 6. Loop (Biar GHA gak mati selama 6 jam)
+      - name: VPS SIAP DIGUNAKAN!
         run: |
-          echo "✅ MESIN KVM SIAP!"
-          echo "📱 Buka Termux -> ssh runner@gh-kvm-box"
-          echo "💡 Setelah masuk, ketik: docker exec -it my_kvm_machine bash"
+          echo "=========================================="
+          echo "✅ STATUS: BERHASIL!"
+          echo "📱 CARA KONEK DARI TERMUX:"
+          echo "   1. ssh runner@gh-kvm-box"
+          echo "   2. (Setelah masuk) ketik: docker exec -it my_kvm_machine bash"
+          echo "=========================================="
+          echo "⏳ Menjaga koneksi tetap hidup selama 6 jam..."
           sleep 21600
