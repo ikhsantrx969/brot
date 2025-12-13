@@ -19,13 +19,7 @@ jobs:
       # 2. Login ke GHCR (Biar bisa tarik image custom kamu)
       - name: Login GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      # 3. Connect Tailscale
-      - name: Connect Tailscale
-        uses: tailscale/github-action@v2
-
-     # ... langkah checkout code ...
-
+    
       - name: CEK DULU ADA ISINYA KAGAK
         run: |
           if [ -z "${{ secrets.TAILSCALE_AUTHKEY }}" ]; then
@@ -39,6 +33,13 @@ jobs:
 
       # ... baru langkah tailscale ...
         
+      # 3. Connect Tailscale
+      - name: Connect Tailscale
+        uses: tailscale/github-action@v2
+
+     # ... langkah checkout code ...
+
+      
         # 3. Connect Tailscale
       - name: Connect Tailscale
         uses: tailscale/github-action@v2
