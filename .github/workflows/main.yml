@@ -23,6 +23,21 @@ jobs:
       # 3. Connect Tailscale
       - name: Connect Tailscale
         uses: tailscale/github-action@v2
+
+     # ... langkah checkout code ...
+
+      - name: CEK DULU ADA ISINYA KAGAK
+        run: |
+          if [ -z "${{ secrets.TAILSCALE_AUTHKEY }}" ]; then
+            echo "❌ KOSONG BOS! Secret ga kebaca sama sekali."
+            exit 1
+          else
+            echo "✅ AMAN! Secret terdeteksi (Panjang karakter: ${#MY_SECRET})"
+          fi
+        env:
+          MY_SECRET: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      # ... baru langkah tailscale ...
         
         # 3. Connect Tailscale
       - name: Connect Tailscale
