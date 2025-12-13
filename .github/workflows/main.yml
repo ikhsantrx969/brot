@@ -1,36 +1,60 @@
-name: Test KVM Availability
-on: workflow_dispatch # Tombol manual
+name: VM TEST (Tailscale)
+on: 
+  workflow_dispatch:
 
 jobs:
-  investigasi-kvm:
+  kvm-mode-on:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. Cek Informasi CPU
-        run: |
-          echo "=== CPU INFO ==="
-          lscpu
-          echo "----------------"
-          echo "Mencari flag virtualisasi (vmx/svm)..."
-          grep -E -c '(vmx|svm)' /proc/cpuinfo || echo "❌ Tidak ada flag virtualisasi di CPU"
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-      - name: 2. Cek Keberadaan /dev/kvm
+      # 1. PERSIAPAN KVM (Penting!)
+      - name: Siapkan Permission KVM
         run: |
-          echo "=== CEK DEVICE ==="
-          if [ -e /dev/kvm ]; then
-            echo "✅ WOW! /dev/kvm DITEMUKAN!"
-            echo "Izin file:"
-            ls -la /dev/kvm
-          else
-            echo "❌ /dev/kvm TIDAK DITEMUKAN."
-            echo "Artinya: Kernel tidak memuat modul KVM atau fitur dimatikan host."
-          fi
+          echo "Setting permission /dev/kvm biar bisa dibaca Docker..."
+          sudo chmod 666 /dev/kvm
+          ls -la /dev/kvm
 
-      - name: 3. Vonis Akhir pake kvm-ok
-        # kvm-ok adalah tool resmi ubuntu buat cek support KVM
+      # 2. Login ke GHCR (Biar bisa tarik image custom kamu)
+      - name: Login GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # 3. Connect Tailscale
+      - name: Connect Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          version: latest
+          hostname: gh-kvm-box
+          args: --ssh 
+
+      # 4. JALANKAN DOCKER DENGAN KVM 🚀
+      - name: Start Docker Container (KVM Enabled)
         run: |
-          echo "=== INSTALL CPU-CHECKER ==="
-          sudo apt-get update -q
-          sudo apt-get install -y cpu-checker
+          # Konfigurasi
+          RAM=7000 # Mentok di 7GB untuk GHA
+          CPU=2
           
-          echo "=== HASIL KVM-OK ==="
-          kvm-ok
+          echo "Starting Container..."
+          
+          docker run -d \
+            --name my_kvm_machine \
+            --device /dev/kvm \
+            --privileged \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            -e RAM=$RAM \
+            -e CPU=$CPU \
+            ghcr.io/ikhsantrx969/ubuntuos:latest \
+            /sbin/init
+            
+            # Catatan: /sbin/init dipakai kalau image kamu support systemd
+            # Kalau error, ganti baris terakhir jadi: tail -f /dev/null
+
+      # 5. Keep Alive (6 Jam)
+      - name: Tunggu Koneksi Termux
+        run: |
+          echo "✅ MESIN KVM SIAP!"
+          echo "📱 Buka Termux -> ssh runner@gh-kvm-box"
+          echo "💡 Setelah masuk, ketik: docker exec -it my_kvm_machine bash"
+          sleep 21600
