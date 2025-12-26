@@ -1,75 +1,76 @@
-name: VPS KVM Ultimate (Manual Tailscale)
+name: Ubuntu 20.04 Datacenter VPS
 on: 
   workflow_dispatch:
 
 jobs:
-  run-vps-kvm:
-    runs-on: ubuntu-latest
+  datacenter-instance:
+    runs-on: ubuntu-20.04
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      # 1. Cek Secret (Biar tenang hati)
-      - name: Cek Secret Tailscale
+      - name: 1. Setup Environment (Clean & Tune)
         run: |
-          if [ -z "${{ secrets.TAILSCALE_AUTHKEY }}" ]; then
-            echo "❌ BAHAYA: Secret TAILSCALE_AUTHKEY kosong!"
-            exit 1
-          else
-            echo "✅ AMAN: Secret ditemukan."
-          fi
-
-      # 2. Login GHCR (Biar bisa tarik image lu)
-      - name: Login ke GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      # 3. Setup KVM (Permission)
-      - name: Setup Permission KVM
-        run: |
-          echo "Memperbaiki izin /dev/kvm..."
-          sudo chmod 666 /dev/kvm
-          ls -la /dev/kvm
-
-      # 4. Install Tailscale MANUAL (Anti Error Version)
-      - name: Install & Connect Tailscale
-        run: |
-          # Download Script Resmi
-          curl -fsSL https://tailscale.com/install.sh | sh
+          # --- Cleaning ---
+          # Menghapus software bawaan runner agar lebih ringan
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/powershell
+          sudo rm -f /etc/update-motd.d/*
+          sudo touch /etc/update-motd.d/00-header
           
-          # Start Service di Background (Userspace Mode biar aman di GHA)
-          sudo tailscaled --tun=userspace-networking --socks5-server=localhost:1055 &
+          # --- Timezone & Hostname ---
+          sudo timedatectl set-timezone Asia/Jakarta
+          sudo hostnamectl set-hostname "ubuntu-datacenter-2004"
           
-          # Tunggu service bangun tidur
-          echo "Menunggu Tailscale service..."
-          sleep 5
-          
-          # Connect pakai Secret
-          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --ssh --hostname gh-kvm-box
+          # --- Kernel Optimization ---
+          # Mengaktifkan BBR (Tersedia di Kernel 4.9+ jadi aman untuk Ubuntu 20.04)
+          echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf
+          echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf
+          sudo sysctl -p
 
-      # 5. Jalankan Docker Container (KVM ON)
-      - name: Start Docker Container
+      - name: 2. Install Tools & SSH Config
         run: |
-          echo "Menjalankan Container..."
+          sudo apt-get update -qq
+          sudo apt-get install -y htop nano neofetch tmux net-tools openssh-server
           
-          # Jalankan di background (-d)
-          docker run -d \
-            --name my_kvm_machine \
-            --device /dev/kvm \
-            --privileged \
-            -e RAM=7000 \
-            -e CPU=2 \
-            ghcr.io/ikhsantrx969/ubuntuos:latest \
-            tail -f /dev/null 
-            # 'tail -f' dipake biar container gak mati sendiri
+          # --- SSH & User Config ---
+          echo "root:${{ secrets.SSH_PASSWORD }}" | sudo chpasswd
+          
+          # Setup PS1 (Tampilan Terminal)
+          cat <<EOF | sudo tee /root/.bashrc
+          export TERM=xterm-256color
+          export PS1='\[\033[01;31m\]root@ubuntu-datacenter-2004\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]# '
+          alias ll='ls -alF'
+          alias cls='clear'
+          neofetch
+          EOF
+          
+          # Izinkan Root Login (Config SSH 20.04)
+          sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+          sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sudo service ssh restart
 
-      # 6. Loop (Biar GHA gak mati selama 6 jam)
-      - name: VPS SIAP DIGUNAKAN!
+      - name: 3. Deploy Tunnel & Start Session
         run: |
-          echo "=========================================="
-          echo "✅ STATUS: BERHASIL!"
-          echo "📱 CARA KONEK DARI TERMUX:"
-          echo "   1. ssh runner@gh-kvm-box"
-          echo "   2. (Setelah masuk) ketik: docker exec -it my_kvm_machine bash"
-          echo "=========================================="
-          echo "⏳ Menjaga koneksi tetap hidup selama 6 jam..."
-          sleep 21600
+          # --- Install Cloudflared ---
+          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
+          
+          # --- Run Tunnel (Background) ---
+          # 'nohup' wajib agar tunnel tidak mati saat pindah baris
+          nohup sudo cloudflared tunnel --no-autoupdate run --token ${{ secrets.CLOUDFLARE_TOKEN }} --protocol quic > /dev/null 2>&1 &
+          
+          sleep 10
+          
+          # --- Tampilkan Info ---
+          echo "=============================================="
+          echo "   VPS UBUNTU 20.04 SIAP (LEGACY STABLE)"
+          echo "=============================================="
+          echo "Host     : ubuntu-datacenter-2004"
+          echo "User     : root"
+          echo "Pass     : (Sesuai Secrets)"
+          echo "Connect  : ssh root@<domain-anda>"
+          echo "Status   : ONLINE (Max 6 Jam)"
+          echo "=============================================="
+          
+          # --- Loop Keep-Alive ---
+          while true; do 
+            sleep 60
+            echo "Heartbeat - System Normal - $(date)"
+          done
